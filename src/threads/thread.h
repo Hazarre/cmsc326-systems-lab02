@@ -11,7 +11,6 @@ enum thread_status
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_SLEEPING,       /*	New	state	for	sleeping	threads	*/
     THREAD_DYING        /* About to be destroyed. */
   };
 
@@ -143,6 +142,7 @@ int thread_get_load_avg (void);
 void thread_sleep(int64_t wake_time);
 void thread_awake(); 
 
+// struct for putting a thread to sleep 
 struct sleeping_thread {
   int64_t wake_time; 
   struct thread* thread;

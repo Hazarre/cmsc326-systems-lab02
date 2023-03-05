@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
-#include <stdlib.h> // CHANGE
 #include <string.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
@@ -498,8 +497,8 @@ void thread_sleep(int64_t wake_time){
     s->wake_time = wake_time;
     s->sema = &sema;
     
-    list_push_back (&sleeping_list, &s->elem); // onto end of list
-    sema_down(&sema);
+    list_push_back (&sleeping_list, &s->elem); // add cur thread to the sleeping list
+    sema_down(&sema); // put thread to sleep
 }
 
 // Remove sleeping_thread from sleep_list whose time is up 
@@ -510,11 +509,12 @@ void thread_awake() {
     for (e = list_begin(&sleeping_list);
         e != list_end(&sleeping_list);
         e = list_next(e)) {
-            // For each sleeping_thread st
+            // For each sleeping_thread st, wake up thread if time's up
             st = list_entry(e,struct sleeping_thread, elem);
             if (timer_ticks() >= st->wake_time) {
               sema_up(st->sema);
               list_remove(e);
+              // free(st);
             }; 
     }
   }
