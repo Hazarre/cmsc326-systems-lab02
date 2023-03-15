@@ -31,7 +31,7 @@ static struct list all_list;
 // CHANGES 
 /* list of sleeping threads */
 static struct list sleeping_list; 
-
+static struct semaphore sleeping_list_sema;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -50,12 +50,10 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
-
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
-
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -301,8 +299,11 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+
+  struct thread *cur = thread_current ();
+  list_remove (&cur->allelem);
+  cur->status = THREAD_DYING;
+
   schedule ();
   NOT_REACHED ();
 }
@@ -460,7 +461,7 @@ is_thread (struct thread *t)
 /* Does basic initialization of T as a blocked thread named
    NAME. */
 static void
-init_thread (struct thread *t, const char *name, int priority)
+  init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
 
@@ -474,7 +475,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+  sema_init(&t->sema, 0); 
+  
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -484,41 +486,44 @@ init_thread (struct thread *t, const char *name, int priority)
 void thread_sleep(int64_t wake_time){
     struct thread *t = thread_current();
     // don't do anything if the cur thread is the idle thread
-    if (t	==	idle_thread) return; 
+    if (t	== idle_thread) return;
 
-    // semaphore to block and unblock the thread
-    struct semaphore sema;
-    sema_init(&sema, 0);
-
-    // data structure to keep track of thread put to sleep and for how long
-    struct sleeping_thread *s = (struct sleeping_thread *) 
-    malloc(sizeof(struct sleeping_thread));
-    s->thread = t;
-    s->wake_time = wake_time;
-    s->sema = &sema;
+    t->wake_time = wake_time;
+    sema_init( &t->sema, 0);
     
-    list_push_back (&sleeping_list, &s->elem); // add cur thread to the sleeping list
-    sema_down(&sema); // put thread to sleep
+    // lock critical section 
+    enum intr_level old_level = intr_disable (); 
+    // sema_down (&sleeping_list_sema);
+    list_push_back(&sleeping_list, &t->sleepelem); // add cur thread to the sleeping list
+    // sema_up (&sleeping_list_sema);
+    intr_set_level (old_level);
+
+    sema_down( &(t->sema) ); // put thread to sleep
 }
 
 // Remove sleeping_thread from sleep_list whose time is up 
 void thread_awake() { 
   if (!list_empty(&sleeping_list)) {
     struct list_elem *e;
-    struct sleeping_thread *st;
+    struct thread *st; //sleeping thread
     for (e = list_begin(&sleeping_list);
         e != list_end(&sleeping_list);
         e = list_next(e)) {
             // For each sleeping_thread st, wake up thread if time's up
-            st = list_entry(e,struct sleeping_thread, elem);
+            st = list_entry(e,struct thread, sleepelem);
             if (timer_ticks() >= st->wake_time) {
-              sema_up(st->sema);
+              // lock critical section 
+              intr_disable ();
+              // sema_down (&sleeping_list_sema);
               list_remove(e);
-              // free(st);
+              // sema_up (&sleeping_list_sema);
+
+              sema_up(&st->sema);
             }; 
     }
   }
 }
+
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */

@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "synch.h" // CHANGES
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -25,7 +26,6 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* A kernel thread or user process.
-
    Each thread structure is stored in its own 4 kB page.  The
    thread structure itself sits at the very bottom of the page
    (at offset 0).  The rest of the page is reserved for the
@@ -90,9 +90,7 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
-    int64_t	wake_time;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -100,6 +98,12 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+ 
+    struct list_elem sleepelem;          // CHANGES
+    int64_t	wake_time;                   // CHANGES
+    struct semaphore sema;               // CHANGES
   };
 
 /* If false (default), use round-robin scheduler.
@@ -141,13 +145,5 @@ int thread_get_load_avg (void);
 // CHANGES
 void thread_sleep(int64_t wake_time);
 void thread_awake(); 
-
-// struct for putting a thread to sleep 
-struct sleeping_thread {
-  int64_t wake_time; 
-  struct thread* thread;
-  struct semaphore* sema;  
-  struct list_elem elem;
-};
 
 #endif /* threads/thread.h */
