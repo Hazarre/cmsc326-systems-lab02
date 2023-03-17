@@ -31,7 +31,6 @@ static struct list all_list;
 // CHANGES 
 /* list of sleeping threads */
 static struct list sleeping_list; 
-static struct semaphore sleeping_list_sema;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -475,49 +474,43 @@ static void
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  sema_init(&t->sema, 0); 
+  sema_init(&t->sema, 0); // CHANGES
   
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }
 
-/* Add current thread to the list of sleepling thread */
+/* Add current thread to the list of sleepling thread and put it to sleep until wake_time*/
 void thread_sleep(int64_t wake_time){
+
     struct thread *t = thread_current();
     // don't do anything if the cur thread is the idle thread
     if (t	== idle_thread) return;
-
     t->wake_time = wake_time;
-    sema_init( &t->sema, 0);
     
-    // lock critical section 
+    // protect critical section 
     enum intr_level old_level = intr_disable (); 
-    // sema_down (&sleeping_list_sema);
     list_push_back(&sleeping_list, &t->sleepelem); // add cur thread to the sleeping list
-    // sema_up (&sleeping_list_sema);
     intr_set_level (old_level);
 
     sema_down( &(t->sema) ); // put thread to sleep
 }
 
-// Remove sleeping_thread from sleep_list whose time is up 
+/* Remove sleeping_thread from sleep_list whose time is up and wake it up */
 void thread_awake() { 
   if (!list_empty(&sleeping_list)) {
     struct list_elem *e;
-    struct thread *st; //sleeping thread
+    struct thread *st; //a sleeping thread
     for (e = list_begin(&sleeping_list);
         e != list_end(&sleeping_list);
         e = list_next(e)) {
-            // For each sleeping_thread st, wake up thread if time's up
             st = list_entry(e,struct thread, sleepelem);
+            // For each sleeping_thread st, wake up thread if time's up
             if (timer_ticks() >= st->wake_time) {
-              // lock critical section 
+              // protect critical section 
               intr_disable ();
-              // sema_down (&sleeping_list_sema);
               list_remove(e);
-              // sema_up (&sleeping_list_sema);
-
               sema_up(&st->sema);
             }; 
     }

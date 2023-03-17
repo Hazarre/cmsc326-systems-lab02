@@ -85,15 +85,15 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-/* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on. */
+/* Sleeps for approximately TICKS timer ticks.  Interrupts must be turned on. */
 // void
 timer_sleep (int64_t ticks) {  
   // Suspends execution of the calling thread until time has advanced by at least x timer ticks. 
   
   int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
-  thread_sleep(start + ticks);  // CHANGE
+  thread_sleep(start + ticks);  
+  // CHANGE
 }
 
 
