@@ -100,7 +100,7 @@ simple_thread_func (void *data_)
   for (i = 0; i < ITER_CNT; i++) 
     {
       lock_acquire (data->lock);
-      //if (i == 0 && data->id==0) print_mlfqs();
+
       *(*data->op)++ = data->id;
       lock_release (data->lock);
       thread_yield ();

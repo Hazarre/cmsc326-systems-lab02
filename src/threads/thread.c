@@ -15,11 +15,15 @@
 #include "userprog/process.h"
 #endif
 
+
+
+#define MAX(a, b) ((a > b) ? a : b) // lab3
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
-
+// #define NUM_MLFQS 20 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -31,6 +35,9 @@ static struct list all_list;
 // CHANGES 
 /* list of sleeping threads */
 static struct list sleeping_list; 
+
+/* data struct for priority queue */
+static struct list priority_list[PRI_MAX-PRI_MIN+1]; // lab3 
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -55,8 +62,11 @@ static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
+#define TIME_SLICE 1            /* # of timer ticks to give each thread. CHANGES from 4 */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+static unsigned global_ticks;   // lab3 # timer ticks globally for mlfqs to shuffle priority after PERIOD_TO_SHUFFLE
+
+#define PERIOD_TO_SHUFFLE 6000  // lab3: num ticks to reset priorities of all threads
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -93,15 +103,26 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
+ 
   list_init (&all_list);
   list_init (&sleeping_list); // CHANGES
+
+  global_ticks = 0; // lab3 
+  /* initialize mlfqs if enabled */
+  if (thread_mlfqs){
+    for (int i=PRI_MIN; i <= PRI_MAX ; i++) 
+      list_init(&priority_list[i]); 
+  }
+  else {
+     list_init (&ready_list);
+  }
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
-  initial_thread->tid = allocate_tid ();
+  initial_thread->tid = allocate_tid (); 
+  thread_yield();
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -122,13 +143,38 @@ thread_start (void)
 }
 
 
+/* 
+This function is called whenever PERIOD_TO_SHUFFLE is passed.
+*/
+static void all_threads_to_top_priority(){
+  // Implemented with help from Tom Gadron
+
+  // re-initialize all list
+  for (int i=PRI_MAX; i>=PRI_MIN ; i--) 
+    list_init (&priority_list[i]); 
+
+  struct list_elem *e;
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+        // reset priority of everything in all_list 
+        // except for the idle and dying threads  
+      if (!(t == idle_thread || t->status == THREAD_DYING)) {
+        t->priority = PRI_MAX;
+        // if thread ready, add to mlfqs 
+        if (t->status == THREAD_READY)
+          list_push_back (&priority_list[PRI_MAX], &t->elem);
+      }
+    }
+}
+
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
 thread_tick (void) 
 {
-  
   struct thread *t = thread_current ();
   /* Update statistics. */
   if (t == idle_thread)
@@ -141,11 +187,24 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+  
+  if (thread_mlfqs){ // lab3
+    if (++global_ticks >= PERIOD_TO_SHUFFLE) {
+      all_threads_to_top_priority();
+      global_ticks = 0; 
+    }
+    else if (++t->time_ran >= TIME_SLICE*(1+ PRI_MAX-t->priority)){
+      // if thread use up a quantum, change priority and yield. 
+      thread_set_priority( MAX(t->priority-1, PRI_MIN) );
+      t->time_ran = 0;
+      intr_yield_on_return ();
+    }
+  }
+  else{
+    if (++thread_ticks >= TIME_SLICE)
+      intr_yield_on_return ();
+  }
 }
-
-
 
 /* Prints thread statistics. */
 void
@@ -212,10 +271,10 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-/* Puts the current thread to sleep.  It will not be scheduled
+/* Puts the current thread to sleep. It will not be scheduled
    again until awoken by thread_unblock().
 
-   This function must be called with interrupts turned off.  It
+   This function must be called with interrupts turned off. It
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
 void
@@ -227,6 +286,19 @@ thread_block (void)
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
 }
+
+// lab3
+/* Dispatcher to add a thread to either the ready_list of the priority_list 
+   depending on whether mlfqs are enabled. 
+*/
+
+static void add_thread_to_run_list(struct thread* t) {
+  if(thread_mlfqs)
+    list_push_back (&priority_list[t->priority], &t->elem); 
+  else
+    list_push_back (&ready_list, &t->elem);
+}
+
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -245,11 +317,14 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
-  t->status = THREAD_READY;
+  if(t != idle_thread){
+    add_thread_to_run_list(t); // lab3 
+  // list_push_back (&ready_list, &t->elem);
+    t->status = THREAD_READY;
+  }
+
   intr_set_level (old_level);
 }
-
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -319,7 +394,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    add_thread_to_run_list(cur); // lab3 CHANGES from 
+    // list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -474,6 +550,7 @@ static void
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->time_ran = 0; // lab3 
   sema_init(&t->sema, 0); // CHANGES
   
   old_level = intr_disable ();
@@ -539,10 +616,22 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+  // case mlfqs
+  if (thread_mlfqs) { // CHANGES 
+    for (int i=PRI_MAX; i>=PRI_MIN ; i--) {
+      if ( !list_empty(&priority_list[i]) ) 
+        return list_entry (list_pop_front (&priority_list[i]), struct thread, elem); 
+    }
+    return idle_thread;
+  }
+  else {
+
+  // case ready_list 
   if (list_empty (&ready_list))
     return idle_thread;
   else
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -611,8 +700,7 @@ schedule (void)
 
   if (cur != next)
     prev = switch_threads (cur, next);
-  thread_schedule_tail (prev);
-  
+  thread_schedule_tail (prev);  
 }
 
 /* Returns a tid to use for a new thread. */

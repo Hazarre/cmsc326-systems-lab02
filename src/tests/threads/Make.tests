@@ -9,7 +9,7 @@ priority-donate-nest priority-donate-sema priority-donate-lower		\
 priority-fifo priority-preempt priority-sema priority-condvar		\
 priority-donate-chain                                                   \
 mlfqs-load-1 mlfqs-load-60 mlfqs-load-avg mlfqs-recent-1 mlfqs-fair-2	\
-mlfqs-fair-20 mlfqs-nice-2 mlfqs-nice-10 mlfqs-block)
+mlfqs-fair-20 mlfqs-nice-2 mlfqs-nice-10 mlfqs-block mlfqs2-fifo mlfqs2-longproc mlfqs2-shortlong)
 
 # Sources for tests.
 tests/threads_SRC  = tests/threads/tests.c
@@ -36,6 +36,9 @@ tests/threads_SRC += tests/threads/mlfqs-load-avg.c
 tests/threads_SRC += tests/threads/mlfqs-recent-1.c
 tests/threads_SRC += tests/threads/mlfqs-fair.c
 tests/threads_SRC += tests/threads/mlfqs-block.c
+tests/threads_SRC += tests/threads/mlfqs2-fifo.c
+tests/threads_SRC += tests/threads/mlfqs2-longproc.c
+tests/threads_SRC += tests/threads/mlfqs2-shortlong.c
 
 MLFQS_OUTPUTS = 				\
 tests/threads/mlfqs-load-1.output		\
@@ -46,7 +49,10 @@ tests/threads/mlfqs-fair-2.output		\
 tests/threads/mlfqs-fair-20.output		\
 tests/threads/mlfqs-nice-2.output		\
 tests/threads/mlfqs-nice-10.output		\
-tests/threads/mlfqs-block.output
+tests/threads/mlfqs-block.output                \
+tests/threads/mlfqs2-fifo.output                \
+tests/threads/mlfqs2-longproc.output		\
+tests/threads/mlfqs2-shortlong.output		
 
 $(MLFQS_OUTPUTS): KERNELFLAGS += -mlfqs
 $(MLFQS_OUTPUTS): TIMEOUT = 480

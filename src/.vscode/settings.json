@@ -50,6 +50,8 @@
         "streambuf": "c",
         "cinttypes": "c",
         "cstdbool": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "interrupt.h": "c",
+        "palloc.h": "c"
     }
 }
