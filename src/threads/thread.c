@@ -66,7 +66,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 static unsigned global_ticks;   // lab3 # timer ticks globally for mlfqs to shuffle priority after PERIOD_TO_SHUFFLE
 
-#define PERIOD_TO_SHUFFLE 6000  // lab3: num ticks to reset priorities of all threads
+#define PERIOD_TO_SHUFFLE 50  // lab3: num ticks to reset priorities of all threads
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -614,7 +614,7 @@ alloc_frame (struct thread *t, size_t size)
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
 static struct thread *
-next_thread_to_run (void) 
+next_thread_to_run(void) 
 {
   // case mlfqs
   if (thread_mlfqs) { // CHANGES 
@@ -625,7 +625,6 @@ next_thread_to_run (void)
     return idle_thread;
   }
   else {
-
   // case ready_list 
   if (list_empty (&ready_list))
     return idle_thread;
