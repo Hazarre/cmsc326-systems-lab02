@@ -1,4 +1,4 @@
-#include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -17,6 +17,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
+
+#define MAX_NUM_ARGS 100 // Max # args for a process
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -30,18 +34,37 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  struct file *file = NULL;
+  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
+  
   strlcpy (fn_copy, file_name, PGSIZE);
+  //+ Get just file name
+  char *save_ptr;
+  file_name = strtok_r((char *) file_name, " ", &save_ptr);
+  /*+ Open executable file to test for existence. */
+  if (!lock_held_by_current_thread(&file_lock)) lock_acquire(&file_lock);
+  file = filesys_open (file_name);
+  if (lock_held_by_current_thread(&file_lock)) lock_release(&file_lock);
+
+  if (file == NULL) 
+    {
+      free(file);
+      printf ("load: %s: open failed\n", file_name);
+      return TID_ERROR;
+    }
+  free(file); // inefficient.  will later reopen file!!
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  if (tid == TID_ERROR) {
+    printf("thread creation failed.\n");
+    palloc_free_page (fn_copy);
+  }
   return tid;
 }
 
@@ -65,7 +88,7 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
-
+  //printf("Now starting process from start_proc\n");
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -88,7 +111,20 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  struct child_process* cp = get_child_process(child_tid);
+  if (!cp || cp->wait)
+    {
+      printf("child proc not found\n");
+      return ERROR;
+    }
+    cp->wait = true;
+  while (!cp->exit) // busy loop (needs to be removed)
+    {
+      timer_sleep(1000);
+    }
+  int status = cp->status;
+  remove_child_process(cp);
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -97,6 +133,19 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  // Free child list
+  remove_child_processes();
+
+  // Will exit if killed by the kernel
+  if (thread_alive(cur->parent))
+    {
+      cur->cp->exit = true;
+    }
+  // set proc exit to true
+  //  struct child_process *cp = get_child_process(cur->parent->pid);
+  cur->cp->exit = true;
+
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -131,7 +180,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -195,7 +244,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *fname, char** args, int argcount);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -204,7 +253,11 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
-   Returns true if successful, false otherwise. */
+   Returns true if successful, false otherwise.
+
+   file_name can contain args and is parsed and args set up on stack.
+
+ */
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
@@ -214,6 +267,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  //+
+  char *save_ptr, *fncopy, *fname, *token;
+  char **args;
+  int argcount = 0;
+
+  fncopy = (char *) malloc( (strlen(file_name) + 1)  );
+  args = (char **) malloc( MAX_NUM_ARGS * sizeof(char *) );
+  if (fncopy == NULL || args == NULL) {
+    PANIC("malloc: out of memory");
+  }
+  if (fncopy == NULL)
+    return TID_ERROR;
+  strlcpy (fncopy, file_name, (strlen(file_name) + 1)  );
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -221,8 +287,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  /* Open executable file. */
-  file = filesys_open (file_name);
+  /*+ tokenize file_name */
+  fname = strtok_r(fncopy," ",&save_ptr);
+  for (args[argcount] = strtok_r (NULL, " ", &save_ptr);
+       args[argcount] != NULL;
+       args[argcount] = strtok_r (NULL, " ", &save_ptr)) {
+    argcount++;
+  }
+
+  /*+ Open executable file. */
+  if (!lock_held_by_current_thread(&file_lock)) lock_acquire(&file_lock);
+  file = filesys_open (fname);
+  if (lock_held_by_current_thread(&file_lock)) lock_release(&file_lock);
+
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -302,9 +379,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp,fname,args,argcount))
     goto done;
-
+  //printf("load: esp = %p\n",*esp);
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -313,9 +390,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  
+  /*+ */
+  if (lock_held_by_current_thread(&file_lock)) lock_release(&file_lock);
+  free(args); free(fncopy);
+
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -425,24 +507,78 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
+   user virtual memory.
+   esp stack pointer
+   fname function to call
+   args function's args
+*/
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, char *fname, char** args, int argcount) 
 {
   uint8_t *kpage;
   bool success = false;
-
+  int plen = sizeof(void *);
+  int i;
+  void *offset = PHYS_BASE;
+  
+  //+ page filled with zeros from the user pool
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success) { //+: 
         *esp = PHYS_BASE;
+        // copy args onto stack
+        for (i = argcount-1; i >= 0; i--) {
+          *esp -= (strlen(args[i]) + 1);
+          strlcpy(*esp,args[i],strlen(args[i])+1);
+        }
+        *esp -= (strlen(fname) + 1);
+        strlcpy(*esp,fname,strlen(fname)+1); // copy fname onto stack
+
+        // round down to word boundary
+        while ( (unsigned int)(*esp) % plen != 0) {
+          *esp -= 1; // down one byte
+          //printf("esp %p %p\n",(unsigned int)(*esp),(unsigned int)(*esp) % plen);
+          *(uint8_t *)*esp = 0x00; // zero one byte
+	}
+
+        *esp -= plen; // null delimiter word
+        *(uint32_t *)*esp = (uint32_t)0;
+        // copy pointers to args onto stack (right to left!)
+        for (i = argcount-1; i >= 0; i--) {
+          offset -= strlen(args[i]) + 1;
+          //printf("offset %x\n",(unsigned int) offset);
+          *esp = *esp - plen;
+          *(int *)*esp = (int *) offset;
+        }
+
+        offset -= strlen(fname) + 1;
+        //printf("fname offset %x\n",(unsigned int) offset);
+  
+        *esp = *esp - plen;
+        *(int *)*esp = (int *) offset; // address of function call
+        offset -= plen;
+        //printf("offset %x\n",(unsigned int) offset);
+
+        *esp -= plen;
+        *(int*)*esp = *esp + plen; // addr of previous ptr (argv)
+        *esp -= plen;
+        *(int*)*esp = argcount + 1; // arg count
+        *esp -= plen;
+        *(int*)*esp = (uint32_t) 0; // fake return address
+
+        //printf("num bytes %d\n",PHYS_BASE - *esp);
+        //hex_dump(*esp,*esp,(int)(PHYS_BASE - *esp),true);
+
+      }
       else
         palloc_free_page (kpage);
     }
   return success;
 }
+
 
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.

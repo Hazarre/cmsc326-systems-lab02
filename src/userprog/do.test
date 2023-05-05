@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+
+# dt==dotest
+# Run one test.
+# Usage: dt TESTNAME (e.g., do.test args-single)
+
+tests=($@)
+
+for i in "${tests[@]}"
+do
+   : 
+   # do whatever on "$i" here
+   echo "TEST $i ===================================="
+   f=build/tests/userprog/$i.result
+   del=build/tests/userprog/$i
+   /bin/rm $del.*
+   make $f
+done
+

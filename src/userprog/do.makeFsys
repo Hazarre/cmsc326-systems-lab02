@@ -1,0 +1,11 @@
+# This sets up a 2MB file system on a simulated disk
+
+pintos-mkdisk filesys.dsk --filesys-size=2
+pintos -v -- -f -q
+pintos -v -p ../examples/echo.c -a echo.c -- -q 
+pintos -v -p ../examples/echo -a echo -- -q 
+pintos -v -p ../examples/cat -a cat -- -q 
+pintos -v -p ../examples/ls -a ls -- -q
+pintos -v -- -q run ls
+
+

@@ -4,7 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h" // CHANGES
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -22,10 +21,11 @@ typedef int tid_t;
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
-#define PRI_DEFAULT 19                  /* Default priority. CHANGES used to be 31*/
-#define PRI_MAX 19                      /* Highest priority. CHANGES used to be 63*/
-#define NUM_MLFQS 20
+#define PRI_DEFAULT 31                  /* Default priority. */
+#define PRI_MAX 63                      /* Highest priority. */
+
 /* A kernel thread or user process.
+
    Each thread structure is stored in its own 4 kB page.  The
    thread structure itself sits at the very bottom of the page
    (at offset 0).  The rest of the page is reserved for the
@@ -91,20 +91,26 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
 
 
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
+    
+    // Needed for wait / exec sys calls
+    struct list child_list;
+    tid_t parent;
+    // Points to child_process struct in parent's child list
+    struct child_process* cp;
 
+    /*+ for files */
+    int fd;
+    struct list file_list;
+    
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
- 
-    struct list_elem sleepelem;          // CHANGES
-    int64_t	wake_time;                   // CHANGES
-    struct semaphore sema;               // CHANGES
-    int64_t time_ran; // lab 3 CHANGES
   };
 
 /* If false (default), use round-robin scheduler.
@@ -122,7 +128,7 @@ typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
-void thread_s (struct thread *);
+void thread_unblock (struct thread *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -142,9 +148,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
-// CHANGES
-void thread_sleep(int64_t wake_time);
-void thread_awake(); 
 
 #endif /* threads/thread.h */

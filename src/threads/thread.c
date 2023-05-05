@@ -15,15 +15,11 @@
 #include "userprog/process.h"
 #endif
 
-
-
-#define MAX(a, b) ((a > b) ? a : b) // lab3
-
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
-// #define NUM_MLFQS 20 
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -31,13 +27,6 @@ static struct list ready_list;
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
-
-// CHANGES 
-/* list of sleeping threads */
-static struct list sleeping_list; 
-
-/* data struct for priority queue */
-static struct list priority_list[PRI_MAX-PRI_MIN+1]; // lab3 
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -62,11 +51,8 @@ static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
-#define TIME_SLICE 1            /* # of timer ticks to give each thread. CHANGES from 4 */
+#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
-static unsigned global_ticks;   // lab3 # timer ticks globally for mlfqs to shuffle priority after PERIOD_TO_SHUFFLE
-
-#define PERIOD_TO_SHUFFLE 50  // lab3: num ticks to reset priorities of all threads
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -74,6 +60,7 @@ static unsigned global_ticks;   // lab3 # timer ticks globally for mlfqs to shuf
 bool thread_mlfqs;
 
 static void kernel_thread (thread_func *, void *aux);
+
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
@@ -103,26 +90,14 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
- 
+  list_init (&ready_list);
   list_init (&all_list);
-  list_init (&sleeping_list); // CHANGES
-
-  global_ticks = 0; // lab3 
-  /* initialize mlfqs if enabled */
-  if (thread_mlfqs){
-    for (int i=PRI_MIN; i <= PRI_MAX ; i++) 
-      list_init(&priority_list[i]); 
-  }
-  else {
-     list_init (&ready_list);
-  }
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
-  initial_thread->tid = allocate_tid (); 
-  thread_yield();
+  initial_thread->tid = allocate_tid ();
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -142,40 +117,13 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
-
-/* 
-This function is called whenever PERIOD_TO_SHUFFLE is passed.
-*/
-static void all_threads_to_top_priority(){
-  // Implemented with help from Tom Gadron
-
-  // re-initialize all list
-  for (int i=PRI_MAX; i>=PRI_MIN ; i--) 
-    list_init (&priority_list[i]); 
-
-  struct list_elem *e;
-  for (e = list_begin (&all_list); e != list_end (&all_list);
-       e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, allelem);
-        // reset priority of everything in all_list 
-        // except for the idle and dying threads  
-      if (!(t == idle_thread || t->status == THREAD_DYING)) {
-        t->priority = PRI_MAX;
-        // if thread ready, add to mlfqs 
-        if (t->status == THREAD_READY)
-          list_push_back (&priority_list[PRI_MAX], &t->elem);
-      }
-    }
-}
-
-
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
+
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -187,23 +135,8 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
-  
-  if (thread_mlfqs){ // lab3
-    if (++global_ticks >= PERIOD_TO_SHUFFLE) {
-      all_threads_to_top_priority();
-      global_ticks = 0; 
-    }
-    else if (++t->time_ran >= TIME_SLICE*(1+ PRI_MAX-t->priority)){
-      // if thread use up a quantum, change priority and yield. 
-      thread_set_priority( MAX(t->priority-1, PRI_MIN) );
-      t->time_ran = 0;
-      intr_yield_on_return ();
-    }
-  }
-  else{
-    if (++thread_ticks >= TIME_SLICE)
-      intr_yield_on_return ();
-  }
+  if (++thread_ticks >= TIME_SLICE)
+    intr_yield_on_return ();
 }
 
 /* Prints thread statistics. */
@@ -265,16 +198,22 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+#ifdef USERPROG
+  /*+ This thread is child of running thread. */
+  t->parent = thread_tid();
+  struct child_process *cp = add_child_process(t->tid);
+  t->cp = cp;
+#endif 
   /* Add to run queue. */
   thread_unblock (t);
 
   return tid;
 }
 
-/* Puts the current thread to sleep. It will not be scheduled
+/* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
-   This function must be called with interrupts turned off. It
+   This function must be called with interrupts turned off.  It
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
 void
@@ -286,19 +225,6 @@ thread_block (void)
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
 }
-
-// lab3
-/* Dispatcher to add a thread to either the ready_list of the priority_list 
-   depending on whether mlfqs are enabled. 
-*/
-
-static void add_thread_to_run_list(struct thread* t) {
-  if(thread_mlfqs)
-    list_push_back (&priority_list[t->priority], &t->elem); 
-  else
-    list_push_back (&ready_list, &t->elem);
-}
-
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -317,14 +243,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  if(t != idle_thread){
-    add_thread_to_run_list(t); // lab3 
-  // list_push_back (&ready_list, &t->elem);
-    t->status = THREAD_READY;
-  }
-
+  list_push_back (&ready_list, &t->elem);
+  t->status = THREAD_READY;
   intr_set_level (old_level);
 }
+
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -373,11 +296,8 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-
-  struct thread *cur = thread_current ();
-  list_remove (&cur->allelem);
-  cur->status = THREAD_DYING;
-
+  list_remove (&thread_current()->allelem);
+  thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -394,8 +314,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    add_thread_to_run_list(cur); // lab3 CHANGES from 
-    // list_push_back (&ready_list, &cur->elem);
+    list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -536,7 +455,7 @@ is_thread (struct thread *t)
 /* Does basic initialization of T as a blocked thread named
    NAME. */
 static void
-  init_thread (struct thread *t, const char *name, int priority)
+init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
 
@@ -550,50 +469,20 @@ static void
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->time_ran = 0; // lab3 
-  sema_init(&t->sema, 0); // CHANGES
-  
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+  //+ for child procs list
+  list_init(&t->child_list);
+  t->cp = NULL;
+
+  //+ for files
+  list_init(&t->file_list);
+  t->fd = 2; // lowest file handle for any process.
+  
 }
-
-/* Add current thread to the list of sleepling thread and put it to sleep until wake_time*/
-void thread_sleep(int64_t wake_time){
-
-    struct thread *t = thread_current();
-    // don't do anything if the cur thread is the idle thread
-    if (t	== idle_thread) return;
-    t->wake_time = wake_time;
-    
-    // protect critical section 
-    enum intr_level old_level = intr_disable (); 
-    list_push_back(&sleeping_list, &t->sleepelem); // add cur thread to the sleeping list
-    intr_set_level (old_level);
-
-    sema_down( &(t->sema) ); // put thread to sleep
-}
-
-/* Remove sleeping_thread from sleep_list whose time is up and wake it up */
-void thread_awake() { 
-  if (!list_empty(&sleeping_list)) {
-    struct list_elem *e;
-    struct thread *st; //a sleeping thread
-    for (e = list_begin(&sleeping_list);
-        e != list_end(&sleeping_list);
-        e = list_next(e)) {
-            st = list_entry(e,struct thread, sleepelem);
-            // For each sleeping_thread st, wake up thread if time's up
-            if (timer_ticks() >= st->wake_time) {
-              // protect critical section 
-              intr_disable ();
-              list_remove(e);
-              sema_up(&st->sema);
-            }; 
-    }
-  }
-}
-
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */
@@ -614,23 +503,12 @@ alloc_frame (struct thread *t, size_t size)
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
 static struct thread *
-next_thread_to_run(void) 
+next_thread_to_run (void) 
 {
-  // case mlfqs
-  if (thread_mlfqs) { // CHANGES 
-    for (int i=PRI_MAX; i>=PRI_MIN ; i--) {
-      if ( !list_empty(&priority_list[i]) ) 
-        return list_entry (list_pop_front (&priority_list[i]), struct thread, elem); 
-    }
-    return idle_thread;
-  }
-  else {
-  // case ready_list 
   if (list_empty (&ready_list))
     return idle_thread;
   else
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -699,7 +577,7 @@ schedule (void)
 
   if (cur != next)
     prev = switch_threads (cur, next);
-  thread_schedule_tail (prev);  
+  thread_schedule_tail (prev);
 }
 
 /* Returns a tid to use for a new thread. */
@@ -719,3 +597,19 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool thread_alive (int pid)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (t->tid == pid)
+        {
+          return true;
+        }
+    }
+  return false;
+}

@@ -57,7 +57,8 @@ sema_init (struct semaphore *sema, unsigned value)
    interrupt handler.  This function may be called with
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. */
-void sema_down (struct semaphore *sema) 
+void
+sema_down (struct semaphore *sema) 
 {
   enum intr_level old_level;
 
@@ -155,7 +156,7 @@ sema_test_helper (void *sema_)
       sema_up (&sema[1]);
     }
 }
-
+
 /* Initializes LOCK.  A lock can be held by at most a single
    thread at any given time.  Our locks are not "recursive", that
    is, it is an error for the thread currently holding a lock to
@@ -175,13 +176,14 @@ void
 lock_init (struct lock *lock)
 {
   ASSERT (lock != NULL);
-  
+
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
-   necessary.  The lock must not already be held by the current thread.
+   necessary.  The lock must not already be held by the current
+   thread.
 
    This function may sleep, so it must not be called within an
    interrupt handler.  This function may be called with

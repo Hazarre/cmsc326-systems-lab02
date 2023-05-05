@@ -52,6 +52,12 @@
         "cstdbool": "c",
         "typeinfo": "c",
         "interrupt.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "main.h": "c",
+        "file.h": "c",
+        "filesys.h": "c",
+        "shutdown.h": "c",
+        "pagedir.h": "c",
+        "syscall.h": "c"
     }
 }

@@ -6,5 +6,5 @@
 void
 test_main (void) 
 {
-  wait (exec ("child-args childarg"));
+  wait ( exec("child-args childarg") );
 }
