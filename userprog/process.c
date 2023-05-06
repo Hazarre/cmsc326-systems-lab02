@@ -117,12 +117,19 @@ process_wait (tid_t child_tid UNUSED)
       printf("child proc not found\n");
       return ERROR;
     }
-    cp->wait = true;
+  
+  cp->wait = true;
+  //lab4 
+  lock_acquire(&(cp->wait_lock));
+  // sema_down on the child process 
+  // sema_up at the process_exit()
+
   while (!cp->exit) // busy loop (needs to be removed)
     {
       timer_sleep(1000);
     }
   int status = cp->status;
+
   remove_child_process(cp);
   return status;
 }
@@ -141,6 +148,8 @@ process_exit (void)
   if (thread_alive(cur->parent))
     {
       cur->cp->exit = true;
+      // lab4 
+      if (cur->cp->wait) lock_release(&(cur->cp->wait_lock));
     }
   // set proc exit to true
   //  struct child_process *cp = get_child_process(cur->parent->pid);

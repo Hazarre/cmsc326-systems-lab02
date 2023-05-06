@@ -1,8 +1,6 @@
 #include <stdio.h>
 
 #include <syscall-nr.h>
-#include "threads/interrupt.h"
-#include "threads/thread.h"
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 #include "userprog/pagedir.h"
@@ -12,6 +10,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 
+#include "threads/thread.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "threads/interrupt.h"
@@ -98,7 +97,15 @@ syscall_handler (struct intr_frame *f ) // UNUSED)
     f->eax = (tid_t) s_exec(fname);
     break;
 
-  case SYS_WAIT: // lab 4 
+  case SYS_WAIT: // lab 4: add wait syscall
+    get_args(f->esp,(void **)&s_args,1);
+    int pid = (tid_t) (s_args[0]);
+    struct child_process* cp = (struct child_process*) get_child_process(pid);
+
+    // printf("Got to child process \n");
+    int pstatus = process_wait(cp->pid);
+    // printf("Waited \n");
+    f->eax = pstatus; 
     break;
 
  case SYS_FILESIZE:
@@ -490,7 +497,10 @@ struct child_process* add_child_process (int pid)
   cp->load = NOT_LOADED;
   cp->wait = false;
   cp->exit = false;
-  //lock_init(&cp->wait_lock);
+  // lab4 
+  // lock_init(&cp->wait_lock);
+  // lock_acquire(&cp->wait_lock);
+
   list_push_back(&thread_current()->child_list,&cp->elem);
   return cp;
 }
