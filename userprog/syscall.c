@@ -10,6 +10,8 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 
+#include "filesys/inode.h"
+
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
@@ -351,10 +353,14 @@ int s_read(int fd,char *buf,unsigned bufsize) {
   else {
     struct file *fp = get_file(fd);
     if (fp == NULL) {
+      printf("null file from fd: %d\n",fd);
       return nread;
     }
     lock_acquire(&file_lock);
+    printf("file inode: %d\n",inode_get_inumber(file_get_inode(fp)));
+    printf("in s_read file crit section\n");
     nread = (int) file_read(fp,buf,bufsize);
+    printf("nread: %d\n",nread);
     lock_release(&file_lock);
   }
   return nread;

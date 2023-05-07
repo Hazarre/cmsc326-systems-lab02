@@ -1,6 +1,14 @@
 {
     "files.associations": {
         "synch.h": "c",
-        "numbers": "c"
+        "numbers": "c",
+        "*.inc": "c",
+        "*.tcc": "c",
+        "iosfwd": "c",
+        "istream": "c",
+        "limits": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "inode.h": "c"
     }
 }

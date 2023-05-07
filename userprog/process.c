@@ -54,7 +54,7 @@ process_execute (const char *file_name)
   if (file == NULL) 
     {
       free(file);
-      printf ("process execute: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", file_name);
       return TID_ERROR;
     }
   free(file); // inefficient.  will later reopen file!!
