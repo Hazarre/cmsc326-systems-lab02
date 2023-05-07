@@ -114,17 +114,11 @@ process_wait (tid_t child_tid)
   struct child_process* cp = get_child_process(child_tid);
   //lab 4
   //clearer error message for multiple waits
-  if (!cp)
-    {
-      printf("child proc not found\n");
-      return ERROR;
-    }
-  else if (cp->wait)
-    {
-      printf("child proc not found\n");
-      //printf("wait already called\n");
-      return ERROR;
-    }
+  if (!cp || cp->wait)
+  {
+    //printf("child proc not found\n");
+    return ERROR;
+  }
   
   cp->wait = true;
   //lab4 

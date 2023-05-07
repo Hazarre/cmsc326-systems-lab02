@@ -224,13 +224,8 @@ s_exec(char *cmdline) {
 int 
 s_wait(tid_t pid)
 {
-  // struct child_process* cp = get_child_process(pid);
-
-  // ASSERT(cp);
-
-  // printf("Got to child process \n");
-  int pstatus = process_wait(pid);
-
+  //lab4
+  return process_wait(pid);
 }
 
 /*  
