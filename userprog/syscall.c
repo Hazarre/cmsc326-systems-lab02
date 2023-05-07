@@ -100,12 +100,7 @@ syscall_handler (struct intr_frame *f ) // UNUSED)
   case SYS_WAIT: // lab 4: add wait syscall
     get_args(f->esp,(void **)&s_args,1);
     int pid = (tid_t) (s_args[0]);
-    struct child_process* cp = (struct child_process*) get_child_process(pid);
-
-    // printf("Got to child process \n");
-    int pstatus = process_wait(cp->pid);
-    // printf("Waited \n");
-    f->eax = pstatus; 
+    f->eax = s_wait(pid); 
     break;
 
  case SYS_FILESIZE:
@@ -226,7 +221,17 @@ s_exec(char *cmdline) {
   return pid;
 }
 
+int 
+s_wait(tid_t pid)
+{
+  // struct child_process* cp = get_child_process(pid);
 
+  // ASSERT(cp);
+
+  // printf("Got to child process \n");
+  int pstatus = process_wait(pid);
+
+}
 
 /*  
    Terminates the current user program, returning status to the
@@ -237,11 +242,11 @@ s_exec(char *cmdline) {
 void s_exit (int status) {
   struct thread *curthread = thread_current();
 
-  /*if (thread_alive(curthread->parent))
-    {
-      curthread->cp->status = status; // set up child status for later
-      }
-  */
+  if (thread_alive(curthread->parent))
+  {
+    curthread->cp->status = status; // set up child status for later
+  }
+  
   printf ("%s: exit(%d)\n",curthread->name,status);
   if (lock_held_by_current_thread(&file_lock)) lock_release(&file_lock);
   
@@ -497,9 +502,9 @@ struct child_process* add_child_process (int pid)
   cp->load = NOT_LOADED;
   cp->wait = false;
   cp->exit = false;
+  cp->status = 0;
   // lab4 
-  // lock_init(&cp->wait_lock);
-  // lock_acquire(&cp->wait_lock);
+  sema_init(&(cp->wait_sema),0);
 
   list_push_back(&thread_current()->child_list,&cp->elem);
   return cp;
@@ -534,6 +539,21 @@ void remove_child_process (struct child_process *cp)
 
 
 void remove_child_processes(void) {
-  // not implemented
+ 
+  //lab 4
+  // loop over child processes and remove each one
+   struct thread *t = thread_current();
+  struct list_elem *e;
+  // examine child processes, return matching pid.
+  e = list_begin (&t->child_list);
+  if (e != list_head(&t->child_list))
+  {
+    while (e != list_tail (&t->child_list))
+    {
+      struct child_process *cp = list_entry (e, struct child_process, elem);
+      remove_child_process(cp);
+      e = list_next (e);
+    }
+  }
 }
 

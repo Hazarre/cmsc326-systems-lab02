@@ -54,7 +54,7 @@ process_execute (const char *file_name)
   if (file == NULL) 
     {
       free(file);
-      printf ("load: %s: open failed\n", file_name);
+      printf ("process execute: %s: open failed\n", file_name);
       return TID_ERROR;
     }
   free(file); // inefficient.  will later reopen file!!
@@ -109,25 +109,32 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   struct child_process* cp = get_child_process(child_tid);
-  if (!cp || cp->wait)
+  //lab 4
+  //clearer error message for multiple waits
+  if (!cp)
     {
       printf("child proc not found\n");
+      return ERROR;
+    }
+  else if (cp->wait)
+    {
+      printf("child proc not found\n");
+      //printf("wait already called\n");
       return ERROR;
     }
   
   cp->wait = true;
   //lab4 
-  lock_acquire(&(cp->wait_lock));
-  // sema_down on the child process 
-  // sema_up at the process_exit()
+  // wait_sema initialized to 0 when child process is created
+  // process_exit() calls a sema_up
+  if (!cp->exit)
+  {
+    sema_down(&(cp->wait_sema));
+  }
 
-  while (!cp->exit) // busy loop (needs to be removed)
-    {
-      timer_sleep(1000);
-    }
   int status = cp->status;
 
   remove_child_process(cp);
@@ -147,9 +154,9 @@ process_exit (void)
   // Will exit if killed by the kernel
   if (thread_alive(cur->parent))
     {
-      cur->cp->exit = true;
       // lab4 
-      if (cur->cp->wait) lock_release(&(cur->cp->wait_lock));
+      sema_up(&(cur->cp->wait_sema));
+      cur->cp->wait=false;
     }
   // set proc exit to true
   //  struct child_process *cp = get_child_process(cur->parent->pid);

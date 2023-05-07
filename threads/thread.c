@@ -290,6 +290,7 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
+  //thread_current ()->cp->status=-1;
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
