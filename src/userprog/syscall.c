@@ -10,8 +10,6 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 
-#include "filesys/inode.h"
-
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
@@ -140,14 +138,22 @@ syscall_handler (struct intr_frame *f ) // UNUSED)
   case SYS_WRITE:
     get_args(f->esp,(void **)&s_args,3);
     int fd_rw = (int)(s_args[0]);
+    
     unsigned int bufsize = (unsigned int)(s_args[2]);
     check_buffer_ptr((char *)(s_args[1]),bufsize);
     char *buf = (char *) user_to_kernel_ptr((const void *) s_args[1]);
-
+    
     if (call_num == SYS_WRITE) 
       f->eax = s_write(fd_rw,buf,bufsize);
-    else
-      f->eax = s_read(fd_rw,buf,bufsize);      
+    else{
+      // printf("bufsize at syscall handler is: %d \n", bufsize);
+      // printf("buff at syscall handler is: %s \n", buf);
+
+      // printf("buff at syscall handler has length: %d \n", strlen(buf) );
+      
+      f->eax = s_read(fd_rw,buf,bufsize);   
+    }
+         
     break;
 
    case SYS_CLOSE:
@@ -165,9 +171,8 @@ syscall_handler (struct intr_frame *f ) // UNUSED)
 /*
   Get n function args from stack pointer.
   Validate each pointer.
-  
 */
-void get_args(void *sp, void **args,int n) {
+void get_args(void *sp, void **args, int n) {
   int i;
   int *p;
 
@@ -289,6 +294,7 @@ int add_file(struct file *fp) {
   flist->fd = thread_current()->fd;
   thread_current()->fd++;
   list_push_back(&thread_current()->file_list, &flist->elem);
+  // file_deny_write(fp);
   return flist->fd;
 }
 
@@ -353,14 +359,19 @@ int s_read(int fd,char *buf,unsigned bufsize) {
   else {
     struct file *fp = get_file(fd);
     if (fp == NULL) {
-      printf("null file from fd: %d\n",fd);
       return nread;
     }
     lock_acquire(&file_lock);
-    printf("file inode: %d\n",inode_get_inumber(file_get_inode(fp)));
-    printf("in s_read file crit section\n");
-    nread = (int) file_read(fp,buf,bufsize);
-    printf("nread: %d\n",nread);
+    
+    // printf( "fd initially %d \n", fd);
+    // printf( "nread  initially %d \n", nread);
+    // printf( "bufsize initially %d \n", bufsize);
+    // printf( "buf initially %s \n", buf);
+
+    nread = (int) file_read(fp, buf, bufsize);
+
+    // printf( "nread after file_read %d \n", nread);
+    
     lock_release(&file_lock);
   }
   return nread;
@@ -388,7 +399,6 @@ void check_buffer_ptr(const void *buf,unsigned size) {
 */
 void check_invalid_ptr_error (const void *vaddr)
 {
-  // lab 4: want cond true when vaddr invalid 
   if (!is_user_vaddr(vaddr) || vaddr < USER_VADDR_BASE)
     {
       s_exit(ERROR);

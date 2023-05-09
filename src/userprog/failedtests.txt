@@ -1,4 +1,8 @@
 
+
+
+
+
 FAIL bad-read     => dereference null
 FAIL bad-read2    => deference a specific addr - read system memory 
 FAIL bad-write    => same as bad-read expcept assigns value to loc. 
@@ -6,12 +10,13 @@ FAIL bad-write2   =>
 FAIL bad-jump     => function call on null pointer 
 FAIL bad-jump2    => function call on a specific pointer
 FAIL close-normal => regular close file: close(int)
-FAIL read-normal  => check_file ("sample.txt", sample, sizeof sample - 1);
 
 
 FAIL rox-child
 FAIL rox-multichild
 FAIL rox-simple
+// no body run 
+
 FAIL wait-bad-pid
 FAIL wait-killed
 FAIL wait-simple
@@ -21,10 +26,15 @@ FAIL no-vm/multi-oom
 FAIL multi-child-fd
 FAIL multi-recurse
 
+FAIL read-normal  => check_file ("sample.txt", sample, sizeof sample - 1);
+read right after you open the file. 
+
+
+FAIL exec-bound-2
+FAIL exec-bound-3
+
+FAIL exec-multiple
 
 FAIL exec-arg
 FAIL exec-bound
-FAIL exec-bound-2
-FAIL exec-bound-3
-FAIL exec-multiple
 FAIL exec-once

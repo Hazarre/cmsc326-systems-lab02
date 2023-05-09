@@ -1,0 +1,15 @@
+FAIL tests/userprog/read-normal
+
+FAIL tests/userprog/rox-child
+FAIL tests/userprog/rox-multichild
+FAIL tests/userprog/multi-child-fd
+
+FAIL tests/userprog/exec-bound-2
+FAIL tests/userprog/exec-bound-3
+FAIL tests/userprog/no-vm/multi-oom
+
+
+// passed after using file_deny_write in process_execute() 
+FAIL tests/userprog/rox-simple
+
+FAIL tests/userprog/exec-missing - now passed

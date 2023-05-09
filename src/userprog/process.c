@@ -49,8 +49,9 @@ process_execute (const char *file_name)
   /*+ Open executable file to test for existence. */
   if (!lock_held_by_current_thread(&file_lock)) lock_acquire(&file_lock);
   file = filesys_open (file_name);
+  file_deny_write(file); //lab4
   if (lock_held_by_current_thread(&file_lock)) lock_release(&file_lock);
-
+  
   if (file == NULL) 
     {
       free(file);

@@ -1,0 +1,8 @@
+FAIL tests/userprog/read-normal
+FAIL tests/userprog/exec-bound-2
+FAIL tests/userprog/exec-bound-3
+FAIL tests/userprog/exec-missing
+FAIL tests/userprog/multi-child-fd
+FAIL tests/userprog/rox-child
+FAIL tests/userprog/rox-multichild
+FAIL tests/userprog/no-vm/multi-oom
